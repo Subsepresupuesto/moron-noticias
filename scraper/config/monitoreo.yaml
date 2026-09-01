@@ -1,0 +1,174 @@
+# Configuración del Módulo de Monitoreo de Prensa Zona Oeste
+# ---------------------------------------------------------------------------
+# Este archivo concentra los términos y los medios. Para cambiar un funcionario,
+# un eje temático o una fuente, se edita acá y se reinicia el servicio: no hace
+# falta tocar el código (Anexo I, punto 3).
+# ---------------------------------------------------------------------------
+
+matching:
+  # Al validar el contexto de un término, cuántas palabras se miran a cada lado.
+  context_window_words: 40
+
+# --- Compuerta -------------------------------------------------------------
+# Toda nota debe contener alguno de estos términos (comparación normalizada,
+# sin distinguir mayúsculas ni tildes). "moron" cubre «Morón» y «municipio de Morón».
+compuerta:
+  - "moron"
+
+# --- Niveles y términos --------------------------------------------------
+# modo:
+#   word      -> palabra/frase completa (límite de palabra)
+#   phrase    -> frase exacta (secuencia de palabras contigua)
+#   prefix    -> raíz: la palabra empieza con el patrón (p. ej. "econ" -> económico)
+#   substring -> subcadena literal (uso excepcional)
+niveles:
+  A:
+    etiqueta: "Actores"
+    terminos:
+      - id: ghi
+        patron: "ghi"
+        modo: word
+      - id: bessega
+        patron: "bessega"
+        modo: word
+      - id: napolitano
+        patron: "napolitano"
+        modo: word
+        # Si aparece el nombre completo, coincide directo.
+        coincide_directo_si_frase: "guido napolitano"
+        # Si aparece solo el apellido, exige un término de contexto cercano.
+        requiere_contexto: true
+        contexto_any:
+          - "guido"
+          - "secretario de economia"
+          - "secretaria de economia"
+          - "hacienda"
+          - "presupuest"
+          - "planificacion presupuestaria"
+          - "subsecretario"
+          - "funcionario"
+  B:
+    etiqueta: "Temas de gestión"
+    terminos:
+      - id: presupuesto
+        patron: "presupuesto"
+        modo: word
+      - id: recursos_humanos
+        patron: "recursos humanos"
+        modo: phrase
+      - id: economia_raiz
+        patron: "econ"
+        modo: prefix
+      - id: secretaria_de_economia
+        patron: "secretaría de economía"
+        modo: phrase
+        etiqueta_especial: "economia.secretaria"
+      - id: planificacion_presupuestaria
+        patron: "planificación presupuestaria"
+        modo: phrase
+      - id: subsecretaria_planificacion_presupuestaria
+        patron: "subsecretaría de planificación presupuestaria"
+        modo: phrase
+
+# --- Medios --------------------------------------------------------------
+# Se usa el primer canal disponible en el orden listado (Anexo I, punto 4):
+# wp_rest -> rss -> html
+medios:
+  - id: elcactus
+    nombre: "El Cactus"
+    dominio: "elcactus.com.ar"
+    motor: wordpress
+    canales:
+      - { tipo: wp_rest, url: "https://elcactus.com.ar/wp-json/wp/v2/posts" }
+      - { tipo: rss, url: "https://elcactus.com.ar/feed/" }
+
+  - id: elcondordemoron
+    nombre: "El Cóndor de Morón"
+    dominio: "elcondordemoron.com.ar"
+    motor: wordpress
+    canales:
+      - { tipo: wp_rest, url: "https://elcondordemoron.com.ar/wp-json/wp/v2/posts" }
+      - { tipo: rss, url: "https://elcondordemoron.com.ar/feed/" }
+
+  - id: quintopoder
+    nombre: "Quinto Poder"
+    dominio: "quintopoder.ar"
+    motor: wordpress
+    # La API REST está deshabilitada (404); se usa el RSS nativo.
+    canales:
+      - { tipo: rss, url: "https://quintopoder.ar/feed/" }
+      - { tipo: html, url: "https://quintopoder.ar/" }
+
+  - id: eldiariodemoron
+    nombre: "El Diario de Morón"
+    dominio: "eldiariodemoron.com.ar"
+    motor: sitio_propio
+    # Sin RSS ni news sitemap. Solo lectura HTML de la portada: cobertura parcial.
+    canales:
+      - { tipo: html, url: "https://www.eldiariodemoron.com.ar/" }
+
+  - id: diarioanticipos
+    nombre: "Diario Anticipos"
+    dominio: "diarioanticipos.com"
+    motor: wordpress
+    canales:
+      - { tipo: rss, url: "https://diarioanticipos.com/feed/" }
+      - { tipo: html, url: "https://diarioanticipos.com/" }
+
+  - id: vivieloeste
+    nombre: "Viví el Oeste"
+    dominio: "vivieloeste.com.ar"
+    motor: sitio_propio
+    # Sin RSS ni news sitemap accesible. Solo lectura HTML de la portada: cobertura parcial.
+    canales:
+      - { tipo: html, url: "https://www.vivieloeste.com.ar/" }
+
+  # Medios nacionales / regionales. La enorme mayoría de sus notas se descarta
+  # en la compuerta «Morón». Los que exponen un "news sitemap" (Google News) se
+  # leen por ahí, con un pre-filtro por «Morón» sobre el título y la URL.
+  - id: letrap
+    nombre: "Letra P"
+    dominio: "letrap.com.ar"
+    motor: sitemap_news
+    canales:
+      - { tipo: sitemap, url: "https://www.letrap.com.ar/sitemap-news.xml" }
+      - { tipo: html, url: "https://www.letrap.com.ar/" }
+
+  - id: lapoliticaonline
+    nombre: "La Política Online"
+    dominio: "lapoliticaonline.com"
+    motor: rss
+    canales:
+      - { tipo: rss, url: "https://www.lapoliticaonline.com/files/rss/politica.xml" }
+      - { tipo: html, url: "https://www.lapoliticaonline.com/" }
+
+  - id: c5n
+    nombre: "C5N"
+    dominio: "c5n.com"
+    motor: sitemap_news
+    canales:
+      - { tipo: sitemap, url: "https://www.c5n.com/sitemap-news.xml" }
+      - { tipo: html, url: "https://www.c5n.com/" }
+
+  - id: ambito
+    nombre: "Ámbito Financiero"
+    dominio: "ambito.com"
+    motor: rss
+    canales:
+      - { tipo: rss, url: "https://www.ambito.com/rss/pages/economia.xml" }
+      - { tipo: html, url: "https://www.ambito.com/" }
+
+  - id: lanacion
+    nombre: "La Nación"
+    dominio: "lanacion.com.ar"
+    motor: sitemap_news
+    # El RSS público de La Nación devuelve un feed vacío; se usa el news sitemap.
+    canales:
+      - { tipo: sitemap, url: "https://www.lanacion.com.ar/sitemap-news.xml" }
+      - { tipo: html, url: "https://www.lanacion.com.ar/" }
+
+# --- Ingesta ------------------------------------------------------------
+ingesta:
+  intervalo_minutos: 20
+  user_agent: "MonitoreoPrensaMoron/1.0 (+contacto: prensa@moron.gob.ar)"
+  timeout_segundos: 15
