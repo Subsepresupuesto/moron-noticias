@@ -2,9 +2,9 @@ name: Actualizar noticias
 
 on:
   schedule:
-    # Cada 30 minutos. GitHub puede demorar la ejecución bajo carga.
-    - cron: "*/30 * * * *"
-  workflow_dispatch: {}          # botón "Run workflow" para correrlo a mano
+    # Respaldo: si el ciclo rápido se corta, esto lo vuelve a enganchar.
+    - cron: "*/20 * * * *"
+  workflow_dispatch: {}
   push:
     branches: [main]
     paths:
@@ -50,3 +50,19 @@ jobs:
             git commit -m "noticias: $(date -u +%FT%TZ)"
             git push
           fi
+
+      # Ciclo rápido: espera ~9 min y vuelve a dispararse.
+      # Solo se activa si existe el secret LOOP_TOKEN (token fine-grained con
+      # permiso "Actions: read and write" sobre este repo). Sin ese secret,
+      # este paso no hace nada y el workflow corre solo con el schedule.
+      - name: Reenganchar el ciclo
+        if: ${{ github.event_name != 'push' }}
+        env:
+          GH_TOKEN: ${{ secrets.LOOP_TOKEN }}
+        run: |
+          if [ -z "${GH_TOKEN}" ]; then
+            echo "Sin LOOP_TOKEN: ciclo rápido inactivo (solo corre el schedule cada 20 min)."
+            exit 0
+          fi
+          sleep 570
+          gh workflow run actualizar.yml --repo "${{ github.repository }}" --ref main
