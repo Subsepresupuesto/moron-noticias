@@ -6,5 +6,5 @@
 //
 // Mientras estén vacías, el panel usa solo el aviso con la pestaña abierta.
 
-window.PUSH_PUBLIC_KEY = "";
-window.PUSH_WORKER_URL = "";
+window.PUSH_PUBLIC_KEY = "BCOCzmTZBeqDkg79EVOwMluPoXS-IeXe5l37f60cxDup4QTWYKDHT6QqfbyKUR61lOHqV_n3BGSUeso7efbPICc";
+window.PUSH_WORKER_URL  = "https://moron-prensa-push.julietacallizo.workers.dev";
