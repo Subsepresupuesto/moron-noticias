@@ -6,6 +6,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex, nofollow">
 <meta name="theme-color" content="#9e2a2b">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Portal de Noticias Morón">
 <link rel="manifest" href="./manifest.webmanifest">
 <link rel="icon" href="./icon-192.png">
 <link rel="apple-touch-icon" href="./icon-192.png">
@@ -89,6 +92,9 @@
 
   .shell { display:grid; grid-template-columns:250px minmax(0,1fr); gap:30px; max-width:1160px; margin:0 auto; padding:26px 22px 80px; }
   .rail { position:sticky; top:74px; align-self:start; display:flex; flex-direction:column; gap:22px; }
+  .rail-logo { width:96px; height:96px; border-radius:50%; overflow:hidden; background:#eb1c24;
+    border:1px solid var(--border); flex:none; }
+  .rail-logo img { width:100%; height:100%; object-fit:cover; display:block; }
   .rail-group { display:flex; flex-direction:column; gap:9px; }
   .rail-label { font-size:11px; font-weight:600; letter-spacing:.09em; text-transform:uppercase; color:var(--muted); }
   .search { width:100%; padding:8px 10px; border-radius:5px; background:var(--surface); border:1px solid var(--border-strong);
@@ -298,6 +304,7 @@
 
   <div class="shell">
     <aside class="rail" id="rail">
+      <div class="rail-logo"><img src="./logo.png" alt="Portal de Noticias Morón · Municipio de Morón"></div>
       <div class="rail-group">
         <label class="rail-label" for="q">Buscar</label>
         <input class="search" id="q" type="search" placeholder="Término o texto de la nota…" autocomplete="off">
