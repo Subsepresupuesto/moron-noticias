@@ -1,0 +1,12 @@
+{
+  "name": "Monitoreo de Prensa Zona Oeste",
+  "short_name": "Prensa Morón",
+  "description": "Noticias de la zona oeste sobre el Municipio de Morón y la gestión.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f6f4f3",
+  "theme_color": "#9e2a2b",
+  "lang": "es-AR",
+  "icons": []
+}

@@ -5,6 +5,8 @@
 <title>Monitoreo de Prensa · Zona Oeste</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex, nofollow">
+<meta name="theme-color" content="#9e2a2b">
+<link rel="manifest" href="./manifest.webmanifest">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Libre+Franklin:wght@400;500;600;700&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&family=IBM+Plex+Mono:wght@400;500&display=swap">
@@ -345,6 +347,7 @@
 </div>
 
 <script src="./clave.js"></script>
+<script src="./push-config.js"></script>
 <script>
 (function () {
   "use strict";
@@ -661,10 +664,85 @@
     });
   }
 
-  // ---------- notificaciones (con la página abierta) ----------
+  // ---------- notificaciones ----------
   var notifSoportado = (typeof window !== "undefined") && ("Notification" in window);
+  var pushSoportado = notifSoportado && ("serviceWorker" in navigator) && ("PushManager" in window);
+  var pushConfig = !!(window.PUSH_PUBLIC_KEY && window.PUSH_WORKER_URL);
   function notifActiva(){ try { return localStorage.getItem("mp_notif") === "on"; } catch(e){ return false; } }
+  function pushActivo(){ try { return localStorage.getItem("mp_push") === "on"; } catch(e){ return false; } }
+
+  if ("serviceWorker" in navigator) {
+    navigator.serviceWorker.register("./sw.js").catch(function(){});
+  }
+  async function regLista(){
+    try {
+      return await Promise.race([
+        navigator.serviceWorker.ready,
+        new Promise(function(_, rej){ setTimeout(function(){ rej(new Error("timeout")); }, 4000); })
+      ]);
+    } catch(e){ return null; }
+  }
+
+  function b64aBytes(base64){
+    var pad = "=".repeat((4 - base64.length % 4) % 4);
+    var b = (base64 + pad).replace(/-/g, "+").replace(/_/g, "/");
+    var raw = atob(b), arr = new Uint8Array(raw.length);
+    for (var i = 0; i < raw.length; i++) arr[i] = raw.charCodeAt(i);
+    return arr;
+  }
+  async function activarPush(){
+    var permiso = Notification.permission;
+    if (permiso === "default") { try { permiso = await Notification.requestPermission(); } catch(e){ permiso = "denied"; } }
+    if (permiso !== "granted") return "sin-permiso";
+    try { localStorage.setItem("mp_notif", "on"); } catch(e){}
+
+    var reg = pushSoportado ? await regLista() : null;
+    if (reg && pushConfig) {
+      try {
+        var sub = await reg.pushManager.getSubscription();
+        if (!sub) {
+          sub = await reg.pushManager.subscribe({
+            userVisibleOnly: true,
+            applicationServerKey: b64aBytes(window.PUSH_PUBLIC_KEY),
+          });
+        }
+        var r = await fetch(window.PUSH_WORKER_URL.replace(/\/+$/, "") + "/suscribir", {
+          method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(sub),
+        });
+        if (r.ok) {
+          try { localStorage.setItem("mp_push", "on"); } catch(e){}
+          if (reg.active) reg.active.postMessage({ type: "seed", ids: NOTAS.map(function(n){ return n.id; }) });
+          return "push";
+        }
+      } catch(e){}
+    }
+    // sin worker configurado: aviso solo con la pestaña abierta
+    try { localStorage.removeItem("mp_push"); } catch(e){}
+    baselineNotif();
+    return "pestaña";
+  }
+  async function desactivarPush(){
+    try { localStorage.setItem("mp_notif", "off"); localStorage.removeItem("mp_push"); } catch(e){}
+    if (pushSoportado) {
+      try {
+        var reg = await regLista();
+        var sub = reg ? await reg.pushManager.getSubscription() : null;
+        if (sub) {
+          if (pushConfig) {
+            try {
+              await fetch(window.PUSH_WORKER_URL.replace(/\/+$/, "") + "/baja", {
+                method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(sub),
+              });
+            } catch(e){}
+          }
+          await sub.unsubscribe();
+        }
+      } catch(e){}
+    }
+  }
+
   function chequearNotificaciones(){
+    if (pushActivo()) return; // el service worker se encarga
     if (!notifSoportado || !notifActiva() || Notification.permission !== "granted") return;
     var pendientes = NOTAS.filter(function(n){
       return notifSeen.indexOf(n.id) < 0
@@ -741,11 +819,14 @@
     if (items.length) html += '<button class="pop-cta" id="marcarLeidas">Marcar todas como vistas</button>';
 
     var chkAttr = (notifSoportado && notifActiva() && Notification.permission === "granted") ? "checked" : "";
+    var hint = !notifSoportado
+      ? "Este navegador no admite notificaciones."
+      : (pushConfig
+          ? "Avisos del sistema en este dispositivo, aunque la pestaña no esté abierta (con el navegador encendido). En iPhone hay que agregar la página a la pantalla de inicio."
+          : "Muestra un aviso mientras esta página esté abierta en el navegador. Se activa por dispositivo.");
     html += '<div class="notif-row"><label><input type="checkbox" id="notifChk" '+chkAttr+
       (notifSoportado ? "" : " disabled")+'> Avisarme cuando entren noticias nuevas</label>' +
-      '<p class="notif-hint">'+(notifSoportado
-        ? "Muestra un aviso del sistema mientras esta página esté abierta en el navegador. Se activa por dispositivo."
-        : "Este navegador no admite notificaciones.")+'</p></div>';
+      '<p class="notif-hint" id="notifHint">'+hint+'</p></div>';
 
     pop.innerHTML = html;
     pop.querySelectorAll(".pop-item").forEach(function(el){
@@ -755,20 +836,22 @@
     if (ml) ml.addEventListener("click", function(){ marcarVisita(); cerrarPops(); render(); });
     var chk = document.getElementById("notifChk");
     if (chk) chk.addEventListener("change", async function(){
+      chk.disabled = true;
       if (chk.checked){
-        var permiso = Notification.permission;
-        if (permiso === "default"){ try { permiso = await Notification.requestPermission(); } catch(e){ permiso = "denied"; } }
-        if (permiso === "granted"){
-          try { localStorage.setItem("mp_notif", "on"); } catch(e){}
-          baselineNotif();
-        } else {
+        var res = await activarPush();
+        if (res === "sin-permiso"){
           chk.checked = false;
-          try { localStorage.setItem("mp_notif", "off"); } catch(e){}
-          alert("El navegador bloqueó las notificaciones para esta página. Habilitalas desde el candado de la barra de direcciones y volvé a intentar.");
+          var h = document.getElementById("notifHint");
+          if (h) h.textContent = "El navegador bloqueó las notificaciones. Habilitalas desde el candado de la barra de direcciones y volvé a intentar.";
+        } else {
+          var h2 = document.getElementById("notifHint");
+          if (h2 && res === "pestaña") h2.textContent = "Activado. Por ahora solo mientras esta página esté abierta (falta configurar el envío en Cloudflare).";
+          if (h2 && res === "push") h2.textContent = "Activado en este dispositivo. Los avisos llegan aunque la pestaña no esté abierta.";
         }
       } else {
-        try { localStorage.setItem("mp_notif", "off"); } catch(e){}
+        await desactivarPush();
       }
+      chk.disabled = false;
     });
   }
 
