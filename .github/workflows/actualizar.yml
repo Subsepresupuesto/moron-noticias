@@ -1,8 +1,11 @@
 name: Actualizar noticias
 
 on:
+  # El ritmo lo marca el Worker de Cloudflare (workflow_dispatch cada ~15 min,
+  # que sí es puntual). Este schedule queda solo como respaldo por si el Worker
+  # está caído: una vez por hora.
   schedule:
-    - cron: "*/15 * * * *"
+    - cron: "27 * * * *"
   workflow_dispatch: {}
   push:
     branches: [main]
@@ -16,7 +19,7 @@ permissions:
 
 concurrency:
   group: actualizar-noticias
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   actualizar:
