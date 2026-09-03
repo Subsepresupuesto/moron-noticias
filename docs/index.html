@@ -120,6 +120,7 @@
   .summary .big { font-size:20px; font-weight:700; }
   .summary .meta { font-size:12.5px; color:var(--muted); }
   .summary .meta strong { color:var(--accent-ink); font-weight:600; }
+  .summary .meta-alerta { color:var(--warn); font-weight:600; }
   .refresh { margin-left:auto; font-size:12px; font-weight:600; color:var(--accent-ink); background:none; border:0; }
   .refresh:hover { text-decoration:underline; }
 
@@ -368,7 +369,12 @@
   var SALT = "monitoreo-prensa-zona-oeste";
   var MESES = ["ene","feb","mar","abr","may","jun","jul","ago","sep","oct","nov","dic"];
   var NOTAS = [], ESTADO = { fuentes: [], generado: null, intervalo_min: 20 };
+  var ULTIMO = { verificacion: null, ahora: null, notas: null };
   var filtro = { q:"", nivel:"todos", dias:7, medios:null };
+  var esIOS = /iphone|ipad|ipod/i.test((navigator.userAgent || "")) ||
+    (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+  var esStandalone = (window.matchMedia && window.matchMedia("(display-mode: standalone)").matches) ||
+    window.navigator.standalone === true;
   var descartadas = leerLista("mp_descartadas");
   var leidas = leerLista("mp_leidas");
   var notifSeen = leerLista("mp_notif_seen");
@@ -396,6 +402,20 @@
     if (min < 60) return "hace "+Math.max(min,0)+" min";
     var h = Math.round(min/60); if (h < 24) return "hace "+h+" h";
     var dd = Math.round(h/24); return "hace "+dd+(dd===1?" día":" días");
+  }
+  function minDesde(iso){
+    if (!iso) return null;
+    var m = Math.round((Date.now() - new Date(iso).getTime())/60000);
+    return isNaN(m) ? null : Math.max(m, 0);
+  }
+  // "Actualizado hace N min": usa la verificación puntual del Worker de Cloudflare
+  // y, si no está, la marca del último scrapeo (estado.json).
+  function actInfo(){
+    var m = minDesde(ULTIMO && ULTIMO.verificacion);
+    if (m === null) m = minDesde(ESTADO && ESTADO.generado);
+    if (m === null) return { txt: "actualización: sin datos", alerta: true };
+    var etq = m < 1 ? "recién" : "hace " + m + (m === 1 ? " minuto" : " minutos");
+    return { txt: "actualizado " + etq, alerta: m > 35 };
   }
   async function sha256(s){
     var buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(s));
@@ -443,6 +463,13 @@
     NOTAS = notas;
     ESTADO = estado && estado.fuentes ? estado : { fuentes: [], generado: null, intervalo_min: 20 };
 
+    if (window.PUSH_WORKER_URL) {
+      try {
+        var ru = await fetch(window.PUSH_WORKER_URL.replace(/\/+$/, "") + "/ultimo", { cache: "no-store" });
+        if (ru.ok) { var u = await ru.json(); if (u) ULTIMO = u; }
+      } catch(e){}
+    }
+
     var ids = ESTADO.fuentes.length
       ? ESTADO.fuentes.map(function(f){ return f.id; })
       : Array.from(new Set(NOTAS.map(function(n){ return n.medio; })));
@@ -465,7 +492,15 @@
     chequearNotificaciones();
     if (!refresco) refresco = setInterval(async function(){
       await cargarDatos(); pintarMedioChecks(); pintarSistema(); render(); chequearNotificaciones();
-    }, 5*60*1000);
+    }, 3*60*1000);
+    // refresca solo el texto "actualizado hace N min" sin volver a pedir datos
+    setInterval(function(){
+      var el = document.getElementById("actMeta");
+      if (!el) return;
+      var ai = actInfo();
+      el.innerHTML = "·&nbsp; " + ai.txt;
+      el.classList.toggle("meta-alerta", ai.alerta);
+    }, 30*1000);
   }
 
   function iniciar(){
@@ -570,10 +605,11 @@
     document.getElementById("leidasN").textContent = leidas.length;
     renderLeidas();
 
+    var ai = actInfo();
     document.getElementById("summary").innerHTML =
       '<span class="big mono">'+lista.length+'</span><span>'+(lista.length===1?"nota sin revisar":"notas sin revisar")+'</span>'+
       '<span class="meta">·&nbsp; <strong>'+nB+'</strong> de Nivel B</span>'+
-      '<span class="meta">·&nbsp; act. '+(ESTADO.generado ? fmtFecha(ESTADO.generado) : "—")+'</span>'+
+      '<span class="meta'+(ai.alerta?" meta-alerta":"")+'" id="actMeta">·&nbsp; '+ai.txt+'</span>'+
       '<button class="refresh" id="btnRefrescar">Actualizar</button>';
     document.getElementById("btnRefrescar").addEventListener("click", async function(){
       await cargarDatos(); pintarMedioChecks(); pintarSistema(); render(); chequearNotificaciones();
@@ -692,9 +728,11 @@
     try {
       return await Promise.race([
         navigator.serviceWorker.ready,
-        new Promise(function(_, rej){ setTimeout(function(){ rej(new Error("timeout")); }, 4000); })
+        new Promise(function(_, rej){ setTimeout(function(){ rej(new Error("timeout")); }, 10000); })
       ]);
-    } catch(e){ return null; }
+    } catch(e){
+      try { return await navigator.serviceWorker.register("./sw.js"); } catch(e2){ return null; }
+    }
   }
 
   function b64aBytes(base64){
@@ -707,33 +745,38 @@
   async function activarPush(){
     var permiso = Notification.permission;
     if (permiso === "default") { try { permiso = await Notification.requestPermission(); } catch(e){ permiso = "denied"; } }
-    if (permiso !== "granted") return "sin-permiso";
+    if (permiso !== "granted") return { modo: "sin-permiso" };
     try { localStorage.setItem("mp_notif", "on"); } catch(e){}
 
-    var reg = pushSoportado ? await regLista() : null;
-    if (reg && pushConfig) {
-      try {
-        var sub = await reg.pushManager.getSubscription();
-        if (!sub) {
-          sub = await reg.pushManager.subscribe({
-            userVisibleOnly: true,
-            applicationServerKey: b64aBytes(window.PUSH_PUBLIC_KEY),
-          });
-        }
-        var r = await fetch(window.PUSH_WORKER_URL.replace(/\/+$/, "") + "/suscribir", {
-          method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(sub),
+    if (!pushSoportado) return finPestana("este navegador no admite avisos en segundo plano");
+    if (!pushConfig)    return finPestana("falta completar push-config.js");
+
+    var reg = await regLista();
+    if (!reg) return finPestana("no se pudo iniciar el service worker");
+
+    try {
+      var sub = await reg.pushManager.getSubscription();
+      if (!sub) {
+        sub = await reg.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: b64aBytes(window.PUSH_PUBLIC_KEY),
         });
-        if (r.ok) {
-          try { localStorage.setItem("mp_push", "on"); } catch(e){}
-          if (reg.active) reg.active.postMessage({ type: "seed", ids: NOTAS.map(function(n){ return n.id; }) });
-          return "push";
-        }
-      } catch(e){}
+      }
+      var r = await fetch(window.PUSH_WORKER_URL.replace(/\/+$/, "") + "/suscribir", {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(sub),
+      });
+      if (!r.ok) return finPestana("el servidor de envío respondió " + r.status);
+      try { localStorage.setItem("mp_push", "on"); } catch(e){}
+      if (reg.active) reg.active.postMessage({ type: "seed", ids: NOTAS.map(function(n){ return n.id; }) });
+      return { modo: "push" };
+    } catch(e){
+      return finPestana(String((e && e.message) || e));
     }
-    // sin worker configurado: aviso solo con la pestaña abierta
+  }
+  function finPestana(detalle){
     try { localStorage.removeItem("mp_push"); } catch(e){}
     baselineNotif();
-    return "pestaña";
+    return { modo: "pestaña", detalle: detalle };
   }
   async function desactivarPush(){
     try { localStorage.setItem("mp_notif", "off"); localStorage.removeItem("mp_push"); } catch(e){}
@@ -832,12 +875,27 @@
     });
     if (items.length) html += '<button class="pop-cta" id="marcarLeidas">Marcar todas como vistas</button>';
 
+    if (esIOS && !esStandalone) {
+      // En iPhone el push web SOLO existe si la página está instalada como app.
+      html += '<div class="notif-row"><p class="notif-hint">' +
+        '<b>Para recibir avisos en el iPhone:</b> tocá el botón Compartir de Safari ' +
+        '(el cuadrado con la flecha), elegí <b>«Agregar a inicio»</b>, abrí la app desde ' +
+        'ese ícono y volvé a este panel para activar las notificaciones.</p></div>';
+      pop.innerHTML = html;
+      pop.querySelectorAll(".pop-item").forEach(function(el){
+        el.addEventListener("click", function(){ cerrarPops(); abrirDrawer(el.dataset.id); });
+      });
+      var mlIOS = document.getElementById("marcarLeidas");
+      if (mlIOS) mlIOS.addEventListener("click", function(){ marcarVisita(); cerrarPops(); render(); });
+      return;
+    }
+
     var chkAttr = (notifSoportado && notifActiva() && Notification.permission === "granted") ? "checked" : "";
     var hint = !notifSoportado
       ? "Este navegador no admite notificaciones."
       : (pushConfig
-          ? "Avisos del sistema en este dispositivo, aunque la pestaña no esté abierta (con el navegador encendido). En iPhone hay que agregar la página a la pantalla de inicio."
-          : "Muestra un aviso mientras esta página esté abierta en el navegador. Se activa por dispositivo.");
+          ? "Avisos del sistema en este dispositivo, aunque la app esté cerrada (con el equipo encendido). Se activa una vez por dispositivo."
+          : "Muestra un aviso mientras esta página esté abierta. Se activa por dispositivo.");
     html += '<div class="notif-row"><label><input type="checkbox" id="notifChk" '+chkAttr+
       (notifSoportado ? "" : " disabled")+'> Avisarme cuando entren noticias nuevas</label>' +
       '<p class="notif-hint" id="notifHint">'+hint+'</p></div>';
@@ -851,19 +909,20 @@
     var chk = document.getElementById("notifChk");
     if (chk) chk.addEventListener("change", async function(){
       chk.disabled = true;
+      var h = document.getElementById("notifHint");
       if (chk.checked){
         var res = await activarPush();
-        if (res === "sin-permiso"){
+        if (res.modo === "sin-permiso"){
           chk.checked = false;
-          var h = document.getElementById("notifHint");
-          if (h) h.textContent = "El navegador bloqueó las notificaciones. Habilitalas desde el candado de la barra de direcciones y volvé a intentar.";
+          if (h) h.textContent = "El navegador bloqueó las notificaciones. Habilitalas en los ajustes del sitio y volvé a intentar.";
+        } else if (res.modo === "push"){
+          if (h) h.textContent = "Activado en este dispositivo. Los avisos llegan aunque la app esté cerrada.";
         } else {
-          var h2 = document.getElementById("notifHint");
-          if (h2 && res === "pestaña") h2.textContent = "Activado. Por ahora solo mientras esta página esté abierta (falta configurar el envío en Cloudflare).";
-          if (h2 && res === "push") h2.textContent = "Activado en este dispositivo. Los avisos llegan aunque la pestaña no esté abierta.";
+          if (h) h.textContent = "Quedó activado solo con la página abierta (" + (res.detalle || "sin más datos") + ").";
         }
       } else {
         await desactivarPush();
+        if (h) h.textContent = "Notificaciones desactivadas en este dispositivo.";
       }
       chk.disabled = false;
     });
