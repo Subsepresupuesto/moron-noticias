@@ -80,6 +80,45 @@ def _id_nota(url_canonica: str) -> str:
 
 
 # --------------------------------------------------------------------------- #
+# Orden de preferencia de canales. Dentro de un mismo nivel se leen TODOS los
+# canales y se fusionan (permite, p. ej., varias secciones RSS de un mismo medio).
+# Si un nivel trae resultados, no se baja al siguiente.
+_NIVELES_CANAL = (("wp_rest",), ("rss", "sitemap"), ("html",))
+
+
+def _leer_canales(medio, cliente: ClienteHTTP):
+    """(crudos_unicos, tipos_ok, errores). Lee el mejor nivel de canales disponible."""
+    errores: list[str] = []
+    tipos_ok: list[str] = []
+    crudos: list = []
+    for nivel in _NIVELES_CANAL:
+        del_nivel = [c for c in medio.canales if c.tipo in nivel]
+        if not del_nivel:
+            continue
+        # con varios canales del mismo nivel, se reparte el límite
+        lim = LIMITE_POR_MEDIO if len(del_nivel) == 1 else max(12, LIMITE_POR_MEDIO // len(del_nivel))
+        for canal in del_nivel:
+            try:
+                got = list(crear_lector(canal, cliente, limite=lim).leer())
+            except Exception as exc:
+                errores.append(f"{canal.tipo}: {type(exc).__name__}: {exc}")
+                continue
+            if got:
+                crudos.extend(got)
+                if canal.tipo not in tipos_ok:
+                    tipos_ok.append(canal.tipo)
+        if crudos:
+            break
+    vistas: set[str] = set()
+    unicos = []
+    for c in crudos:
+        u = c.url or ""
+        if u and u not in vistas:
+            vistas.add(u)
+            unicos.append(c)
+    return unicos, tipos_ok, errores
+
+
 def _procesar_medio(medio, motor: MotorFiltrado, cliente: ClienteHTTP, conocidas: set[str], lector=None):
     """Devuelve (lista_de_notas_nuevas, resumen_dict). ``lector`` se inyecta en las pruebas."""
     resumen = {"vistos": 0, "coincidentes": 0, "nuevos": 0, "estado": "ok", "error": None,
@@ -91,16 +130,23 @@ def _procesar_medio(medio, motor: MotorFiltrado, cliente: ClienteHTTP, conocidas
         resumen["error"] = "sin canal configurado"
         return nuevas, resumen
 
-    try:
-        if lector is None:
-            lector = crear_lector(medio.canales[0], cliente, limite=LIMITE_POR_MEDIO)
-        else:
-            resumen["canal"] = getattr(lector, "canal", resumen["canal"])
-        crudos = list(lector.leer())
-    except Exception as exc:
-        resumen["estado"] = "error"
-        resumen["error"] = f"{type(exc).__name__}: {exc}"[:300]
-        return nuevas, resumen
+    if lector is not None:
+        resumen["canal"] = getattr(lector, "canal", resumen["canal"])
+        try:
+            crudos = list(lector.leer())
+        except Exception as exc:
+            resumen["estado"] = "error"
+            resumen["error"] = f"{type(exc).__name__}: {exc}"[:300]
+            return nuevas, resumen
+    else:
+        crudos, tipos_ok, errores = _leer_canales(medio, cliente)
+        resumen["canal"] = ",".join(tipos_ok) or resumen["canal"]
+        if not crudos:
+            resumen["estado"] = "error"
+            resumen["error"] = ("; ".join(errores) or "sin resultados")[:300]
+            return nuevas, resumen
+        if errores:
+            resumen["error"] = ("parcial: " + "; ".join(errores))[:300]
 
     deteccion = _iso_local(_ahora())
     for crudo in crudos:
@@ -195,12 +241,14 @@ def main() -> int:
     ahora_iso = _iso_local(ahora)
     fuentes_estado: list[dict] = []
     total_nuevos = 0
+    ids_nuevos: list[str] = []
 
     with ClienteHTTP(config.ingesta.user_agent, timeout=config.ingesta.timeout_segundos) as cliente:
         for medio in config.medios:
             nuevas, resumen = _procesar_medio(medio, motor, cliente, conocidas)
             for nota in nuevas:
                 por_url[nota["url_canonica"]] = nota
+                ids_nuevos.append(nota["id"])
             total_nuevos += len(nuevas)
             fuentes_estado.append(
                 {
@@ -237,6 +285,8 @@ def main() -> int:
             "generado": ahora_iso,
             "intervalo_min": config.ingesta.intervalo_minutos,
             "total_notas": len(todas),
+            "nuevas_ultima_corrida": total_nuevos,
+            "ids_nuevos": ids_nuevos,
             "fuentes": fuentes_estado,
         },
     )
