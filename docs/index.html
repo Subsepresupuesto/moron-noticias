@@ -490,6 +490,13 @@
     pintarSistema();
     render();
     chequearNotificaciones();
+    try {
+      var pedido = new URLSearchParams(location.search).get("nota");
+      if (pedido && notaPorId(pedido)) {
+        abrirDrawer(pedido);
+        history.replaceState(null, "", location.pathname);
+      }
+    } catch(e){}
     if (!refresco) refresco = setInterval(async function(){
       await cargarDatos(); pintarMedioChecks(); pintarSistema(); render(); chequearNotificaciones();
     }, 3*60*1000);
@@ -809,13 +816,20 @@
     if (!pendientes.length) return;
     NOTAS.forEach(function(n){ if (notifSeen.indexOf(n.id) < 0) notifSeen.push(n.id); });
     guardarLista("mp_notif_seen", notifSeen);
-    var cuerpo = pendientes.length === 1
-      ? pendientes[0].titulo
-      : pendientes.length + " noticias nuevas · " + pendientes[0].titulo;
-    try {
-      var nt = new Notification("Monitoreo de Prensa", { body: cuerpo, tag: "mp-noticias", renotify: true });
-      nt.onclick = function(){ try { window.focus(); } catch(e){} nt.close(); };
-    } catch(e){}
+    // Una notificación por nota (con esta pestaña abierta hay menos margen que
+    // el service worker: se limita un poco más para no saturar).
+    var MAX = 8;
+    pendientes.slice(0, MAX).forEach(function(n){
+      try {
+        var nt = new Notification(n.titulo || "Nueva noticia", {
+          body: n.medio_nombre || n.medio || "", tag: "mp-" + n.id,
+        });
+        nt.onclick = function(){ try { window.focus(); } catch(e){} abrirDrawer(n.id); nt.close(); };
+      } catch(e){}
+    });
+    if (pendientes.length > MAX) {
+      try { new Notification("Portal de Noticias Morón", { body: "y " + (pendientes.length - MAX) + " más", tag: "mp-mas" }); } catch(e){}
+    }
   }
   function baselineNotif(){
     notifSeen = NOTAS.map(function(n){ return n.id; });
