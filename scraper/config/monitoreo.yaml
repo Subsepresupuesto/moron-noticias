@@ -138,8 +138,14 @@ medios:
     nombre: "La Política Online"
     dominio: "lapoliticaonline.com"
     motor: rss
+    # LPO no tiene un feed general: cada sección es un RSS aparte. Las notas del
+    # municipio caen sobre todo en «conurbano» y «provincia», no en «política».
+    # El pipeline lee TODAS estas secciones y fusiona.
     canales:
+      - { tipo: rss, url: "https://www.lapoliticaonline.com/files/rss/conurbano.xml" }
+      - { tipo: rss, url: "https://www.lapoliticaonline.com/files/rss/provincia.xml" }
       - { tipo: rss, url: "https://www.lapoliticaonline.com/files/rss/politica.xml" }
+      - { tipo: rss, url: "https://www.lapoliticaonline.com/files/rss/economia.xml" }
       - { tipo: html, url: "https://www.lapoliticaonline.com/" }
 
   - id: c5n
