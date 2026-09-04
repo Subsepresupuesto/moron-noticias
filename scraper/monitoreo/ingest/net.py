@@ -70,12 +70,29 @@ class ClienteHTTP:
 
     # -- GET --
     def get(self, url: str, *, etag: str | None = None, last_modified: str | None = None) -> Respuesta:
+        import time
+
+        import httpx
+
         headers: dict[str, str] = {}
         if etag:
             headers["If-None-Match"] = etag
         if last_modified:
             headers["If-Modified-Since"] = last_modified
-        r = self._cli.get(url, headers=headers)
+
+        # Reintentos ante fallos transitorios (timeouts, cortes de conexión,
+        # handshakes TLS que fallan una vez y andan al segundo intento).
+        ultimo: Exception | None = None
+        for intento in range(3):
+            try:
+                r = self._cli.get(url, headers=headers)
+                break
+            except httpx.TransportError as exc:
+                ultimo = exc
+                time.sleep(1.5 * (intento + 1))
+        else:
+            raise ultimo  # type: ignore[misc]
+
         if r.status_code == 304:
             return Respuesta(304, "", etag, last_modified, no_modificado=True)
         r.raise_for_status()
