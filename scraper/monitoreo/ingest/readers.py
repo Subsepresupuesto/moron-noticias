@@ -240,9 +240,11 @@ class LectorSitemap:
 # --------------------------------------------------------------------------- #
 _NO_ARTICULO = re.compile(
     r"/(tag|tags|categoria|category|seccion|section|secciones|author|autor|page|pagina|"
-    r"wp-json|wp-admin|feed)/"
+    r"wp-json|wp-admin|wp-content|wp-includes|feed|assets?|static|dist|build|vendor|"
+    r"fonts?|css|js|img|imgs|images|media|cabecera[0-9-]*)/"
     r"|/noticias?-de-[a-z-]+/?($|\?)"          # páginas índice de sección (ej. /noticias-de-moron)
-    r"|\.(jpg|jpeg|png|gif|webp|pdf|xml|rss)(\?|$)",
+    r"|\.(jpg|jpeg|png|gif|webp|svg|ico|pdf|xml|rss|css|js|mjs|json|woff2?|ttf|eot|"
+    r"mp4|mp3|webm|avi|zip|rar)(\?|$)",
     re.IGNORECASE,
 )
 
@@ -282,8 +284,8 @@ class LectorHtml:
     def _enlaces(self, html: str) -> list[str]:
         host = urlsplit(self.url).netloc.lower().removeprefix("www.")
         vistos: set[str] = set()
-        salida: list[str] = []
-        for m in re.finditer(r'href=["\']([^"\'#]+)["\']', html, re.IGNORECASE):
+        candidatos: list[tuple[int, int, str]] = []
+        for orden, m in enumerate(re.finditer(r'href=["\']([^"\'#]+)["\']', html, re.IGNORECASE)):
             u = urljoin(self.url, m.group(1))
             p = urlsplit(u)
             if p.scheme not in ("http", "https"):
@@ -297,8 +299,23 @@ class LectorHtml:
             if u in vistos:
                 continue
             vistos.add(u)
-            salida.append(u)
-        return salida
+            candidatos.append((_puntaje_articulo(p.path), orden, u))
+        # Primero los que más parecen una nota (fecha en la ruta, slug largo);
+        # a igual puntaje, el orden en que aparecen en la página.
+        candidatos.sort(key=lambda c: (-c[0], c[1]))
+        return [u for _, _, u in candidatos]
+
+
+def _puntaje_articulo(path: str) -> int:
+    """Cuánto se parece una ruta a la de una nota (más alto = más probable)."""
+    if re.search(r"/(?:19|20)\d\d/\d\d?/\d\d?/", path):
+        return 3  # /2026/09/08/slug
+    ult = path.rstrip("/").rsplit("/", 1)[-1]
+    if ult.count("-") >= 3 and len(ult) >= 25:
+        return 2  # slug largo con varias palabras
+    if re.search(r"/(?:19|20)\d\d/", path) and "-" in ult:
+        return 1
+    return 0
 
 
 def _titulo_html(html: str) -> str | None:
