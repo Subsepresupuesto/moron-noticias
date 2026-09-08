@@ -1,12 +1,13 @@
-"""Genera el hash de la clave de acceso para pegar en ``docs/clave.js``.
+"""Genera el hash de un acceso (usuario + contraseña) para ``docs/clave.js``.
 
 Uso:
     cd sitio/scraper
-    python -m monitoreo.hash_clave "la-clave-compartida"
+    python -m monitoreo.hash_clave <usuario> "<contraseña>"
 
-La clave nunca se guarda; en el sitio solo queda su hash. Esto es una barrera
-simple para el uso interno, no una protección fuerte: el archivo de noticias es
-un JSON estático y quien tenga su URL puede leerlo igual.
+El hash es  sha256("monitoreo-prensa-zona-oeste|<usuario>|<contraseña>")  con el
+usuario en minúsculas. La contraseña nunca se guarda; en el sitio solo queda su
+hash. Es una barrera simple para uso interno, no una protección fuerte: el
+archivo de noticias es un JSON estático y quien tenga su URL puede leerlo igual.
 """
 
 from __future__ import annotations
@@ -17,19 +18,21 @@ import sys
 _SALT = "monitoreo-prensa-zona-oeste"
 
 
-def hash_de(clave: str) -> str:
-    return hashlib.sha256(f"{_SALT}|{clave}".encode("utf-8")).hexdigest()
+def hash_de(usuario: str, clave: str) -> str:
+    usuario = usuario.strip().lower()
+    return hashlib.sha256(f"{_SALT}|{usuario}|{clave}".encode("utf-8")).hexdigest()
 
 
 def main() -> int:
-    if len(sys.argv) != 2 or not sys.argv[1]:
-        print('Uso: python -m monitoreo.hash_clave "la-clave"', file=sys.stderr)
+    if len(sys.argv) != 3 or not sys.argv[1] or not sys.argv[2]:
+        print('Uso: python -m monitoreo.hash_clave <usuario> "<contraseña>"', file=sys.stderr)
         return 2
-    h = hash_de(sys.argv[1])
+    usuario = sys.argv[1].strip().lower()
+    h = hash_de(usuario, sys.argv[2])
     print()
-    print("Pegá esto en docs/clave.js :")
+    print("Pegá / reemplazá esta línea en la lista window.CLAVE_HASHES de docs/clave.js:")
     print()
-    print(f'  window.CLAVE_HASH = "{h}";')
+    print(f'  "{h}", // {usuario}')
     print()
     return 0
 
