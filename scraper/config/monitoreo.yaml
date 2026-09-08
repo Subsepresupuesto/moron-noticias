@@ -57,8 +57,49 @@ niveles:
         patron: "recursos humanos"
         modo: phrase
       - id: economia_raiz
-        patron: "econ"
+        # "económ" (normalizado: "econom") cubre economía, económico/a, economista.
+        # Requiere que cerca aparezca algún término económico concreto, para no
+        # entrar por una mención suelta ("clima económico", "acto de reconocimiento")
+        # en notas que no tratan de economía.
+        patron: "económ"
         modo: prefix
+        requiere_contexto: true
+        contexto_any:
+          - "presupuest"
+          - "fiscal"
+          - "financ"
+          - "recaudac"
+          - "coparticip"
+          - "inversion"
+          - "obra publica"
+          - "deuda"
+          - "tarifa"
+          - "subsidi"
+          - "impuest"
+          - "tribut"
+          - "inflacion"
+          - "salari"
+          - "paritaria"
+          - "produccion"
+          - "industri"
+          - "comerci"
+          - "pyme"
+          - "precios"
+          - "consumo"
+          - "ventas"
+          - "costo de vida"
+          - "poder adquisitivo"
+          - "actividad economica"
+          - "plan economico"
+          - "politica economica"
+          - "crisis economica"
+          - "desarrollo economico"
+          - "reactivacion"
+          - "dolar"
+          - "credito"
+          - "gasto publico"
+          - "ajuste"
+          - "recesion"
       - id: secretaria_de_economia
         patron: "secretaría de economía"
         modo: phrase
@@ -172,6 +213,24 @@ medios:
     canales:
       - { tipo: sitemap, url: "https://www.lanacion.com.ar/sitemap-news.xml" }
       - { tipo: html, url: "https://www.lanacion.com.ar/" }
+
+  - id: primerplano
+    nombre: "Primer Plano"
+    dominio: "primerplanoonline.com.ar"
+    motor: wordpress
+    canales:
+      - { tipo: wp_rest, url: "https://primerplanoonline.com.ar/wp-json/wp/v2/posts" }
+      - { tipo: rss, url: "https://primerplanoonline.com.ar/feed/" }
+
+  - id: elbonaerense
+    nombre: "El Bonaerense"
+    dominio: "elbonaerense.news"
+    motor: sitio_propio
+    # Sin RSS ni API. Lectura HTML de la portada y de las secciones con notas
+    # de gestión política.
+    canales:
+      - { tipo: html, url: "https://www.elbonaerense.news/" }
+      - { tipo: html, url: "https://www.elbonaerense.news/ahora-mismo.html" }
 
 # --- Ingesta ------------------------------------------------------------
 ingesta:
