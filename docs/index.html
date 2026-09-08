@@ -60,7 +60,8 @@
     border-radius:10px; box-shadow:var(--shadow-lg); padding:26px 24px; }
   .login-card h1 { font-size:17px; font-weight:700; padding-left:11px; border-left:3px solid var(--accent); }
   .login-card p { font-size:13px; color:var(--muted); margin:10px 0 18px; }
-  .login-card label { font-size:11px; font-weight:600; letter-spacing:.08em; text-transform:uppercase; color:var(--muted); }
+  .login-card label { display:block; font-size:11px; font-weight:600; letter-spacing:.08em; text-transform:uppercase; color:var(--muted); }
+  .login-card .campo + .campo { margin-top:12px; }
   .login-card input { width:100%; margin-top:6px; padding:10px 12px; border-radius:6px; font:inherit;
     background:var(--surface); border:1px solid var(--border-strong); color:var(--ink); }
   .login-card input:focus-visible { outline:2px solid var(--focus); outline-offset:1px; border-color:transparent; }
@@ -259,9 +260,16 @@
 <div class="login-wrap" id="login" hidden>
   <form class="login-card" id="loginForm">
     <h1>Monitoreo de Prensa</h1>
-    <p>Panel interno de la Secretaría. Ingresá la clave de acceso compartida.</p>
-    <label for="clave">Clave de acceso</label>
-    <input type="password" id="clave" autocomplete="current-password" required>
+    <p>Panel interno de la Secretaría. Ingresá con tu usuario y contraseña.</p>
+    <div class="campo">
+      <label for="usuario">Usuario</label>
+      <input type="text" id="usuario" autocomplete="username" autocapitalize="none"
+             autocorrect="off" spellcheck="false" required>
+    </div>
+    <div class="campo">
+      <label for="clave">Contraseña</label>
+      <input type="password" id="clave" autocomplete="current-password" required>
+    </div>
     <button type="submit">Entrar</button>
     <div class="login-error" id="loginError" role="alert"></div>
   </form>
@@ -432,21 +440,31 @@
   function notaPorId(id){ return NOTAS.find(function(n){ return n.id === id; }); }
 
   // ---------- login ----------
-  var HASH = (window.CLAVE_HASH || "").trim();
+  // Lista de hashes válidos: sha256("<SALT>|<usuario>|<contraseña>").
+  // Compatibilidad: si todavía existe el CLAVE_HASH viejo (clave sola), se acepta.
+  var HASHES = (window.CLAVE_HASHES || (window.CLAVE_HASH ? [window.CLAVE_HASH] : []))
+    .map(function(h){ return String(h).trim().toLowerCase(); })
+    .filter(Boolean);
+  function hashConocido(h){ return !!h && HASHES.indexOf(String(h).toLowerCase()) >= 0; }
+
   function mostrarLogin(){
     document.getElementById("app").hidden = true;
     document.getElementById("login").hidden = false;
-    var i = document.getElementById("clave"); if (i) i.focus();
+    var i = document.getElementById("usuario"); if (i) i.focus();
   }
   document.getElementById("loginForm").addEventListener("submit", async function(e){
     e.preventDefault();
     var err = document.getElementById("loginError"); err.textContent = "";
+    var usuario = (document.getElementById("usuario").value || "").trim().toLowerCase();
     var val = document.getElementById("clave").value;
     try {
-      var h = await sha256(SALT + "|" + val);
-      if (h === HASH) { try { localStorage.setItem("mp_ok", HASH); } catch(e){} await arrancarPanel(); return; }
-      err.textContent = "Clave incorrecta.";
-    } catch(e){ err.textContent = "Este navegador no puede validar la clave (probá con HTTPS)."; }
+      var h = await sha256(SALT + "|" + usuario + "|" + val);
+      if (hashConocido(h)) {
+        try { localStorage.setItem("mp_ok", h); localStorage.setItem("mp_usuario", usuario); } catch(e){}
+        await arrancarPanel(); return;
+      }
+      err.textContent = "Usuario o contraseña incorrectos.";
+    } catch(e){ err.textContent = "Este navegador no puede validar el acceso (probá con HTTPS)."; }
   });
 
   // ---------- datos ----------
@@ -513,7 +531,7 @@
   function iniciar(){
     aplicarTema();
     var ok = false;
-    try { ok = !HASH || localStorage.getItem("mp_ok") === HASH; } catch(e){ ok = !HASH; }
+    try { ok = !HASHES.length || hashConocido(localStorage.getItem("mp_ok")); } catch(e){ ok = !HASHES.length; }
     if (ok) arrancarPanel(); else mostrarLogin();
   }
 
