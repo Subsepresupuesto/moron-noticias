@@ -50,10 +50,19 @@ def test_nivel_b_presupuesto(motor):
 
 
 def test_nivel_b_raiz_economica(motor):
+    # "económica" cuenta solo si hay contexto económico concreto cerca.
     r = motor.evaluar(cuerpo="La situación económica de Morón preocupa a los comerciantes.")
     assert r.aceptada is True
     assert "economia_raiz" in r.ids_terminos()
     assert r.niveles == ("B",)
+
+
+def test_raiz_economica_requiere_contexto(motor):
+    # Mención suelta de "económico" en una nota que no trata de economía: no entra.
+    r = motor.evaluar(
+        cuerpo="En Morón hubo un acto de reconocimiento a bomberos. El clima económico no fue tema."
+    )
+    assert r.aceptada is False
 
 
 def test_nivel_b_recursos_humanos_frase(motor):
@@ -132,7 +141,7 @@ def test_pizza_napolitana_no_activa_el_apellido(motor):
 # --- Config -----------------------------------------------------------
 def test_config_real_carga_medios_y_niveles():
     cfg = ConfigMonitoreo.desde_yaml()
-    assert len(cfg.medios) == 11
+    assert len(cfg.medios) == 13
     assert {n.clave for n in cfg.niveles} == {"A", "B"}
     assert cfg.compuerta == ("moron",)
     # Todos los medios tienen al menos un canal en el orden de preferencia.
