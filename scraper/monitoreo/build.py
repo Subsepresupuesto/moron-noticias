@@ -201,21 +201,35 @@ def _procesar_medio(medio, motor: MotorFiltrado, cliente: ClienteHTTP, conocidas
     return nuevas, resumen
 
 
+_FECHA_MINIMA = datetime(1970, 1, 1, tzinfo=timezone.utc)
+
+
 def _clave_fecha(n: dict) -> str:
     return n.get("fecha_publicacion") or n.get("fecha_deteccion") or ""
 
 
+def _fecha_dt(n: dict) -> datetime:
+    """Fecha de la nota como ``datetime`` con zona, para ordenar cronológicamente.
+
+    Usa la fecha de publicación; si no hay o no se puede parsear, la de detección;
+    si tampoco, una fecha mínima (la nota queda al final).
+    """
+    for txt in (n.get("fecha_publicacion"), n.get("fecha_deteccion")):
+        if not txt:
+            continue
+        try:
+            dt = datetime.fromisoformat(txt)
+        except ValueError:
+            continue
+        return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+    return _FECHA_MINIMA
+
+
 def _dentro_de_ventana(n: dict, corte: datetime) -> bool:
-    txt = _clave_fecha(n)
-    if not txt:
-        return True
-    try:
-        dt = datetime.fromisoformat(txt)
-        if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=timezone.utc)
-        return dt >= corte
-    except ValueError:
-        return True
+    dt = _fecha_dt(n)
+    if dt is _FECHA_MINIMA:
+        return True  # sin fecha utilizable: no se poda
+    return dt >= corte
 
 
 # --------------------------------------------------------------------------- #
@@ -271,11 +285,11 @@ def main() -> int:
                 resumen["estado"] + (f" ({resumen['error']})" if resumen["error"] else ""),
             )
 
-    # Poda y orden: primero Nivel B, luego lo más reciente.
+    # Poda por antigüedad y orden estrictamente cronológico: la más nueva arriba,
+    # la más vieja abajo. El nivel (A/B) se muestra como etiqueta, no reordena.
     corte = ahora - timedelta(days=RETENCION_DIAS)
     todas = [n for n in por_url.values() if _dentro_de_ventana(n, corte)]
-    todas.sort(key=_clave_fecha, reverse=True)
-    todas.sort(key=lambda n: 0 if "B" in (n.get("niveles") or []) else 1)
+    todas.sort(key=_fecha_dt, reverse=True)
     todas = todas[:MAX_NOTAS]
 
     _escribir_json("notas.json", todas)
