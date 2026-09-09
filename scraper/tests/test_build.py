@@ -8,6 +8,19 @@ from monitoreo.filtering import MotorFiltrado
 from monitoreo.ingest.readers import ArticuloCrudo
 
 
+def test_orden_estrictamente_cronologico():
+    """La más nueva primero, la más vieja última — sin importar el nivel."""
+    notas = [
+        {"id": "vieja_B", "niveles": ["B"], "fecha_publicacion": "2026-09-01T10:00:00-03:00"},
+        {"id": "nueva_A", "niveles": ["A"], "fecha_publicacion": "2026-09-05T09:00:00-03:00"},
+        {"id": "media_B", "niveles": ["B"], "fecha_publicacion": "2026-09-03T12:00:00-03:00"},
+        {"id": "sin_pub_nueva", "niveles": ["A"], "fecha_publicacion": None,
+         "fecha_deteccion": "2026-09-06T08:00:00-03:00"},
+    ]
+    ordenadas = sorted(notas, key=build._fecha_dt, reverse=True)
+    assert [n["id"] for n in ordenadas] == ["sin_pub_nueva", "nueva_A", "media_B", "vieja_B"]
+
+
 class LectorFake:
     canal = "rss"
 
