@@ -341,7 +341,7 @@
       <p class="legend">
         <b>Nivel A — Actores.</b> Menciones a funcionarios que la Secretaría sigue de cerca.<br>
         <b>Nivel B — Temas de gestión.</b> Presupuesto, economía, recursos humanos.<br>
-        El panel muestra primero las notas de Nivel B.<br>Toda nota contiene además «Morón».<br>
+        Las notas se ordenan por fecha: la más nueva arriba, la más vieja abajo.<br>Toda nota contiene además «Morón».<br>
         Descartar y marcar como leída son personales de este dispositivo.
       </p>
     </aside>
@@ -596,6 +596,10 @@
   }
 
   // ---------- feed ----------
+  function fechaOrden(n){
+    var t = Date.parse(n.fecha_publicacion || n.fecha_deteccion || "");
+    return isNaN(t) ? 0 : t;
+  }
   function visibles(){
     var q = normaliza(filtro.q.trim());
     var corte = Date.now() - filtro.dias * 86400000;
@@ -611,7 +615,7 @@
         if (hay.indexOf(q) < 0) return false;
       }
       return true;
-    });
+    }).sort(function(a, b){ return fechaOrden(b) - fechaOrden(a); });  // más nueva arriba, más vieja abajo
   }
   function esNuevo(n){ return Date.parse(n.fecha_deteccion||"") > Date.parse(visitaGuardada()); }
 
