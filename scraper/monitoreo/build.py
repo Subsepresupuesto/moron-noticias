@@ -186,7 +186,8 @@ def _procesar_medio(medio, motor: MotorFiltrado, cliente: ClienteHTTP, conocidas
                 "contenido_hash": hash_contenido(cuerpo),
                 "niveles": list(res.niveles),
                 "terminos": [
-                    {"id": c.termino_id, "nivel": c.nivel, "etiqueta_especial": c.etiqueta_especial}
+                    {"id": c.termino_id, "nivel": c.nivel, "patron": c.patron,
+                     "etiqueta_especial": c.etiqueta_especial}
                     for c in res.coincidencias
                 ],
                 "fecha_publicacion": _iso_local(crudo.fecha_publicacion),

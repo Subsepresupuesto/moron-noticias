@@ -99,6 +99,12 @@ class ConfigMonitoreo:
     context_window_words: int = 40
     medios: tuple[MedioCfg, ...] = ()
     ingesta: IngestaCfg = field(default_factory=IngestaCfg)
+    # Si es False, alcanza con pasar la compuerta: los niveles solo etiquetan.
+    exigir_termino: bool = True
+    # Si TODAS las oraciones que mencionan a la compuerta contienen además una
+    # de estas frases (p. ej. referencias de distancia/cómo llegar: "a 70
+    # kilómetros de Morón"), no se considera que la nota trate del municipio.
+    compuerta_excluye_contexto: tuple[str, ...] = ()
 
     def nivel(self, clave: str) -> NivelCfg:
         for n in self.niveles:
@@ -199,4 +205,6 @@ class ConfigMonitoreo:
             context_window_words=context_window_words,
             medios=tuple(medios),
             ingesta=ingesta,
+            exigir_termino=bool(datos.get("exigir_termino", True)),
+            compuerta_excluye_contexto=tuple(str(x) for x in (datos.get("compuerta_excluye_contexto") or [])),
         )

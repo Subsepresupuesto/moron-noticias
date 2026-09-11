@@ -13,6 +13,7 @@ condiciona por sí solo el ingreso. No hay alertas en tiempo real.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 
 from .config import ConfigMonitoreo, TerminoCfg
@@ -21,6 +22,13 @@ from .normalize import normalizar, tokenizar
 MOTIVO_SIN_MORON = "sin_moron"
 MOTIVO_SIN_TERMINOS = "sin_terminos"
 MOTIVO_ACEPTADA = "aceptada"
+
+_SEPARADOR_ORACION = re.compile(r"[.!?\n]+")
+
+
+def _oraciones(texto_normalizado: str) -> list[str]:
+    """Parte un texto ya normalizado (con puntuación) en oraciones."""
+    return [o.strip() for o in _SEPARADOR_ORACION.split(texto_normalizado) if o.strip()]
 
 
 @dataclass(frozen=True)
@@ -71,12 +79,14 @@ class MotorFiltrado:
         self._compuerta: list[list[str]] = [
             tokenizar(normalizar(t)) for t in config.compuerta
         ]
+        self._compuerta_excluye = [normalizar(f) for f in config.compuerta_excluye_contexto if f]
 
     # ------------------------------------------------------------------
     def evaluar(self, titulo: str = "", cuerpo: str = "") -> ResultadoFiltrado:
-        tokens = tokenizar(normalizar(f"{titulo}\n{cuerpo}"))
+        texto_normalizado = normalizar(f"{titulo}\n{cuerpo}")
+        tokens = tokenizar(texto_normalizado)
 
-        if not self._pasa_compuerta(tokens):
+        if not self._pasa_compuerta(texto_normalizado):
             return ResultadoFiltrado(aceptada=False, motivo=MOTIVO_SIN_MORON)
 
         coincidencias: list[Coincidencia] = []
@@ -94,7 +104,10 @@ class MotorFiltrado:
                         )
                     )
 
-        if not coincidencias:
+        # Por defecto la nota debe coincidir con algún término de nivel además de
+        # la compuerta (lógica Morón). Si el config marca exigir_termino=False,
+        # basta con pasar la compuerta y los niveles quedan solo como etiquetas.
+        if not coincidencias and getattr(self.config, "exigir_termino", True):
             return ResultadoFiltrado(aceptada=False, motivo=MOTIVO_SIN_TERMINOS)
 
         niveles = tuple(sorted({c.nivel for c in coincidencias}))
@@ -106,8 +119,25 @@ class MotorFiltrado:
         )
 
     # ------------------------------------------------------------------
-    def _pasa_compuerta(self, tokens: list[str]) -> bool:
-        return any(_indices_sublista(tokens, patron) for patron in self._compuerta if patron)
+    def _pasa_compuerta(self, texto_normalizado: str) -> bool:
+        """La compuerta se evalúa oración por oración (no por ventana de
+        palabras): una mención cuenta si, en ESA oración, no está acompañada de
+        una frase de exclusión (p. ej. "a 70 kilómetros de Morón", "cómo llegar
+        desde Morón, Castelar..." — referencias de distancia/ruta, típicas de
+        notas turísticas de otras localidades que solo usan a Morón como punto
+        geográfico). Si alguna otra oración menciona a Morón sin ese contexto,
+        la nota entra igual.
+        """
+        patrones = [p for p in self._compuerta if p]
+        if not patrones:
+            return False
+        for oracion in _oraciones(texto_normalizado):
+            oracion_tokens = tokenizar(oracion)
+            if not any(_indices_sublista(oracion_tokens, patron) for patron in patrones):
+                continue
+            if not self._compuerta_excluye or not any(f in oracion for f in self._compuerta_excluye):
+                return True
+        return False
 
     def _contar_termino(self, term: TerminoCfg, tokens: list[str]) -> int:
         patron_norm = normalizar(term.patron)
