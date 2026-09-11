@@ -38,6 +38,39 @@ def test_moron_sin_terminos_se_descarta(motor):
 def test_compuerta_sin_tilde(motor):
     r = motor.evaluar(cuerpo="Vecinos de Moron reclaman por el presupuesto municipal.")
     assert r.aceptada is True
+
+
+def test_moron_solo_como_referencia_de_distancia_se_descarta(motor):
+    # Nota turística de Mercedes real: "Morón" solo aparece como punto de
+    # referencia geográfico ("cómo llegar desde Morón...", "a 70 kilómetros de
+    # Morón"), nunca como tema. No debe entrar aunque mencione "económico".
+    r = motor.evaluar(
+        titulo="Este fin de semana, una escapada perfecta: fiesta nacional del salame quintero en Mercedes",
+        cuerpo=(
+            "Cómo llegar desde la zona oeste. Para quienes viajen desde Morón, "
+            "Castelar, Ituzaingó, Merlo, Moreno, Hurlingham y otras localidades "
+            "de la zona oeste, una de las opciones más directas es tomar el "
+            "Acceso Oeste en dirección a Luján. El predio se encuentra "
+            "aproximadamente a 70 kilómetros de Morón y 100 de la Ciudad de "
+            "Buenos Aires. También genera un importante movimiento económico "
+            "para toda la ciudad, considerando las ventas de productores."
+        ),
+    )
+    assert r.aceptada is False
+    assert r.motivo == MOTIVO_SIN_MORON
+
+
+def test_moron_con_otra_mencion_real_entra_igual(motor):
+    # Si además de la referencia de distancia hay una mención real de Morón,
+    # la exclusión no debe tapar una nota genuina.
+    r = motor.evaluar(
+        titulo="Morón presentó su presupuesto 2027",
+        cuerpo=(
+            "El intendente de Morón presentó el presupuesto municipal. "
+            "El predio se encuentra a 70 kilómetros de Morón, un dato aparte."
+        ),
+    )
+    assert r.aceptada is True
     assert r.motivo == MOTIVO_ACEPTADA
 
 
