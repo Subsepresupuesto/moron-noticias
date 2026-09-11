@@ -15,6 +15,17 @@ matching:
 compuerta:
   - "moron"
 
+# Si TODAS las oraciones que mencionan "morón" contienen además alguna de
+# estas frases, no se considera que la nota trate del municipio: son
+# menciones de paso (distancia, cómo llegar), típicas de notas turísticas de
+# otras localidades que solo usan a Morón como punto de referencia geográfico.
+# Si otra oración menciona a Morón sin este contexto, la nota entra igual.
+compuerta_excluye_contexto:
+  - "kilometros de"
+  - "km de"
+  - "como llegar"
+  - "acceso oeste"
+
 # --- Niveles y términos --------------------------------------------------
 # modo:
 #   word      -> palabra/frase completa (límite de palabra)
