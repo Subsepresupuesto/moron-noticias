@@ -436,7 +436,11 @@
     catch(e){ return new Date(Date.now()-86400000).toISOString(); }
   }
   function marcarVisita(){ try { localStorage.setItem("mp_visita", new Date().toISOString()); } catch(e){} }
-  function patronesDe(n){ return (n.terminos||[]).map(function(t){ return t.id; }).concat(["morón","moron","econ"]); }
+  // Términos cuyo patrón real (p. ej. "económ", raíz) no queda claro para
+  // alguien que lee el panel; se muestran con una etiqueta más natural.
+  var ETIQUETA_TERMINO = { economia_raiz: "económico / economía" };
+  function etiquetaTermino(t){ return ETIQUETA_TERMINO[t.id] || t.patron || t.id; }
+  function patronesDe(n){ return (n.terminos||[]).map(function(t){ return t.patron || t.id; }).concat(["morón","moron","econ"]); }
   function notaPorId(id){ return NOTAS.find(function(n){ return n.id === id; }); }
 
   // ---------- login ----------
@@ -611,7 +615,7 @@
       var f = Date.parse(n.fecha_publicacion || n.fecha_deteccion || "");
       if (!isNaN(f) && f < corte) return false;
       if (q){
-        var hay = normaliza((n.titulo||"") + " " + (n.extracto||"") + " " + (n.terminos||[]).map(function(t){ return t.id; }).join(" "));
+        var hay = normaliza((n.titulo||"") + " " + (n.extracto||"") + " " + (n.terminos||[]).map(function(t){ return t.id+" "+(t.patron||""); }).join(" "));
         if (hay.indexOf(q) < 0) return false;
       }
       return true;
@@ -866,7 +870,7 @@
     var yaLeida = leidas.indexOf(id) >= 0;
     var rows = '<div class="match-row"><span class="ok">✓</span> Compuerta: la nota contiene <span class="k">morón</span></div>';
     (n.terminos||[]).forEach(function(t){
-      rows += '<div class="match-row"><span class="lvl">Nivel '+t.nivel+'</span><span class="k">'+esc(t.id)+'</span>'+
+      rows += '<div class="match-row"><span class="lvl">Nivel '+t.nivel+'</span><span class="k">'+esc(etiquetaTermino(t))+'</span>'+
         (t.etiqueta_especial ? '<span style="color:var(--muted);font-size:11px">· '+esc(t.etiqueta_especial)+'</span>' : '')+'</div>';
     });
     document.getElementById("drawerBody").innerHTML =
